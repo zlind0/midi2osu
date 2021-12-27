@@ -1,19 +1,103 @@
+from io import StringIO
 import pretty_midi
+import random
 
-midi_data = pretty_midi.PrettyMIDI('test.mid')
+TITLE="OSU-Mahler9-3"
+
+unify=False
+single_track=True
+midi_data = pretty_midi.PrettyMIDI(f'{TITLE}.mid')
 # print(midi_data.__dict__)
 # print(midi_data.time_signature_changes)
+prefix="""osu file format v14
 
-def track_to_keys(note_seq, max_keys=4):
+[General]
+AudioFilename: TITLE.mp3
+AudioLeadIn: 0
+PreviewTime: 43174
+Countdown: 1
+SampleSet: Normal
+StackLeniency: 0.7
+Mode: 3
+LetterboxInBreaks: 0
+SpecialStyle: 0
+WidescreenStoryboard: 1
+
+[Editor]
+DistanceSpacing: 0.9
+BeatDivisor: 4
+GridSize: 32
+TimelineZoom: 2.1
+
+[Metadata]
+Title:TITLE
+TitleUnicode:TITLE
+Artist:Lind
+ArtistUnicode:Lind
+Creator:Lind
+Version:Alpha
+Source:
+Tags:
+BeatmapID:96072221
+BeatmapSetID:96072221
+
+[Difficulty]
+HPDrainRate:4
+CircleSize:4
+OverallDifficulty:8
+ApproachRate:10
+SliderMultiplier:2
+SliderTickRate:2
+
+[TimingPoints]
+0,500,4,2,0,0,1,0
+
+[HitObjects]
+
+""".replace('TITLE',TITLE)
+
+def track_to_keys(note_seq,xrange=(0,512),yrange=(0,512), max_keys=4):
     # Note: start, end, pitch, velocity
     # TODO: add support for "holding" notes
-    pass
+    # TODO: deal with concurrent keys
+    res=[]
+    lastkey=-1
+    lastpitch=0
+    key_x_delta=(xrange[1]-xrange[0])/max_keys
+    key_x_delta_2=int(key_x_delta/2)
+    for note in note_seq:
+        if note.pitch > lastpitch:
+            lastkey=min(max_keys-1, lastkey+1)
+        else:
+            lastkey=max(0, lastkey-1)
+        lastpitch=note.pitch
+        x=int(lastkey*key_x_delta)+key_x_delta_2+xrange[0]
+        y=random.randint(*yrange)
+        t=int(note.start*1000)
+        res.append((t,f"{x},{y},{t},1,0,0:0:0:0:"))
+    return res
 
+with open(f'test.osu','w') as f:
+    f.write(prefix)
+    print(f"INSTRUMENTS={len(midi_data.instruments)}")
+    allres=[]
+    for idx, instrument in enumerate(midi_data.instruments):
+        idx=1-idx
+        print(f"INSTRUNENT NOTES={len(instrument.notes)}")
+        if unify or single_track:
+            allres+=track_to_keys(instrument.notes)
+        else: # assume the first track to be right hand notes
+            allres+=track_to_keys(instrument.notes, xrange=(256*(idx), 256*(idx+1)), max_keys=2)
+        if single_track: break
+    allres=sorted(allres)
+    f.write("\n".join((i[1] for i in allres)))
 
-for instrument in midi_data.instruments:
-    for note in instrument.notes:
-        # print(note)
-        pass
+from zipfile import ZipFile
+zipObj = ZipFile(f'{TITLE}.osz', 'w')
+# Add multiple files to the zip
+zipObj.write('test.osu')
+zipObj.write(f'{TITLE}.mp3')
+zipObj.close()
 
 
 """
