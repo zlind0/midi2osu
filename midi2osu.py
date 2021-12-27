@@ -1,8 +1,18 @@
-from io import StringIO
 import pretty_midi
-import random
+import random, sys, os
 
-TITLE="OSU-Mahler9-3"
+if len(sys.argv) < 2:
+    print("Usage: python3 midi2osu.py <basename>\nNote that both .mid and .mp3 files should all be present.")
+    exit(1)
+TITLE=sys.argv[1]
+
+if not os.path.exists(TITLE+".mid"):
+    print(f"{TITLE}.mid not found.")
+    exit(1)
+
+if not os.path.exists(TITLE+".mp3"):
+    print(f"{TITLE}.mp3 not found.")
+    exit(1)
 
 unify=False
 single_track=True
