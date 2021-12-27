@@ -21,7 +21,7 @@ midi_data = pretty_midi.PrettyMIDI(f'{TITLE}.mid')
 # print(midi_data.time_signature_changes)
 prefix="""osu file format v14
 
-[General]
+
 AudioFilename: TITLE.mp3
 AudioLeadIn: 0
 PreviewTime: 43174
