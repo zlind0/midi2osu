@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 
 TITLE='firebird'
-ST=3
-LIM=6
-STFT_WINLEN=4096
-NFFT=8192
+ST=0
+LIM=20
+STFT_WINLEN=2048
+NFFT=4096
 SAMPLE_RATE=44100
 STFT_WINDOW_TIME=(STFT_WINLEN/4)/SAMPLE_RATE
 
@@ -42,25 +42,23 @@ for instrument in midi_data.instruments:
             print(note.pitch, NOTE_NAME[note.pitch], NOTE_FREQ[note.pitch], note.start, note.end)
             note_times.append(note.start-ST)
             note_ends.append(note.end-ST)
-            while note.pitch<48:
+            while note.pitch<60:
                 note.pitch+=12
             note_pitches.append(note.pitch)
             note_freq_pitches.append(NOTE_FREQ[note.pitch])
 
 # %%
-fig, ax = plt.subplots()
-img = librosa.display.specshow(librosa.amplitude_to_db(S,
-                                                       ref=np.max),
-                               y_axis='log', x_axis='time', ax=ax)
-ax.set_title('Power spectrogram')
+# fig, ax = plt.subplots()
+# img = librosa.display.specshow(librosa.amplitude_to_db(S,
+#                                                        ref=np.max),
+#                                y_axis='log', x_axis='time', ax=ax, sr=SAMPLE_RATE, hop_length=STFT_WINLEN/4)
+# ax.set_title('Power spectrogram')
 
-fig.colorbar(img, ax=ax, format="%+2.0f dB")
-ax.plot(note_times, note_freq_pitches,"x", color="#FFFFFF")
-ax.plot(note_ends, note_freq_pitches,"x", color="#00FF00")
-plt.savefig('stft.pdf')
+# fig.colorbar(img, ax=ax, format="%+2.0f dB")
+# ax.plot(note_times, note_freq_pitches,"x", color="#FFFFFF")
+# ax.plot(note_ends, note_freq_pitches,"x", color="#00FF00")
+# plt.savefig('stft.pdf')
 
-# %%
-note_times
 # %%
 db = librosa.amplitude_to_db(S,ref=np.max)
 db.shape
@@ -70,14 +68,85 @@ for note in NOTE_FREQ:
     NOTE_FFT_ROW.append(np.argmin(np.abs(fft_freqs-note)))
 for idx, note in enumerate(NOTE_FFT_ROW):
     print(idx, note, NOTE_NAME[idx], NOTE_FREQ[idx])
-# %%
-note_idx=0
-print(note_pitches[note_idx], note_freq_pitches[note_idx], NOTE_NAME[note_pitches[note_idx]])
-plt.plot(np.arange(ST,LIM,(LIM-ST)/db.shape[1]), S[NOTE_FFT_ROW[note_pitches[0]],:])
-plt.title(f"STFT_AMPLITUDE_VALUE FOR {NOTE_NAME[note_pitches[0]]}")
 
+#%%
+
+from matplotlib.pyplot import figure
+from scipy.signal import argrelextrema
+
+note_idx=1
+argrelextrema_order=10 # define how many points to use for the argrelextrema
+harmonics=[0.5,1,2,4]
+note_shifts=[0,12,24,36]
+
+print("Note info:", note_pitches[note_idx], note_freq_pitches[note_idx], NOTE_NAME[note_pitches[note_idx]])
+note_harmonics=[h*note_freq_pitches[note_idx] for h in harmonics]
+print("Harmonic frequencies:", note_harmonics)
+
+# this is ampllitude of all harmonic frequencies
+freq_amplitude=np.zeros(S.shape[1])
+for shift in note_shifts:
+    freq_amplitude+=S[NOTE_FFT_ROW[note_pitches[note_idx]]]
+
+# this is the overall amplitude of the sound
+sum_amp=np.sum(S, axis=0)
+sum_amp_gradient=np.gradient(sum_amp)
+potential_note_times_by_gradient = argrelextrema(sum_amp_gradient, np.greater, order=argrelextrema_order)
+potential_note_times_by_gradient = np.array(potential_note_times_by_gradient) * STFT_WINDOW_TIME + ST
+
+# same_pitch_times contains the times when the note is played at the same pitch
+same_pitch_times=[]
+for idx, _pitch in enumerate(note_pitches):
+    if _pitch == note_pitches[note_idx]:
+        same_pitch_times.append(note_times[idx]+ST)
+
+# solve potential notes using overall amplitude
+potential_note_times = argrelextrema(sum_amp, np.greater, order=argrelextrema_order) 
+potential_note_times = np.array(potential_note_times) * STFT_WINDOW_TIME + ST
+
+#solve potential same pitch notes using pitch amplitude percentage
+potential_note_times_by_pitch = argrelextrema(freq_amplitude/sum_amp, np.greater, order=argrelextrema_order)
+potential_note_times_by_pitch = np.array(potential_note_times_by_pitch) * STFT_WINDOW_TIME + ST
+
+print(potential_note_times_by_pitch)
+
+#%%
+figure(figsize=(40, 20), dpi=80)
+# red dot is the time of note in midi file
+# blue dot is the potential notes
+plt.subplot(411)
+plt.plot(np.arange(ST,LIM,(LIM-ST)/db.shape[1]), sum_amp)
+plt.title(f"OVERALL_AMPLITUDE_VALUE FOR {NOTE_NAME[note_pitches[0]]}")
+plt.plot(potential_note_times,[0]*len(potential_note_times), "X", color="#0000FF")
+plt.xlim(ST,ST+LIM)
+
+plt.subplot(412)
+plt.plot(np.arange(ST,LIM,(LIM-ST)/db.shape[1]), sum_amp_gradient)
+plt.title(f"OVERALL_AMPLITUDE_GRADIENT FOR {NOTE_NAME[note_pitches[0]]}")
+plt.plot(potential_note_times_by_gradient,[0]*len(potential_note_times_by_gradient), "X", color="#00FF00")
+plt.xlim(ST,ST+LIM)
+
+plt.subplot(413)
+plt.plot(np.arange(ST,LIM,(LIM-ST)/db.shape[1]), freq_amplitude)
+plt.title(f"NOTE_HARMONIC_AMPLITUDE_VALUE FOR {NOTE_NAME[note_pitches[0]]}")
+plt.plot(same_pitch_times,[0]*len(same_pitch_times), "X", color="#FF0000")
+plt.plot(potential_note_times,[0]*len(potential_note_times), "X", color="#0000FF")
+plt.xlim(ST,ST+LIM)
+
+
+plt.subplot(414)
+plt.plot(np.arange(ST,LIM,(LIM-ST)/db.shape[1]), freq_amplitude/sum_amp)
+plt.title(f"NOTE_HARMONIC_AMPLITUDE_PERCENTAGE FOR {NOTE_NAME[note_pitches[0]]}")
+plt.plot(note_times, [0.005]*len(note_times), "x", color="#444444")
+plt.plot(potential_note_times,[0]*len(potential_note_times), "X", color="#0000FF")
+plt.plot(potential_note_times_by_gradient,[-0.05]*len(potential_note_times_by_gradient), "X", color="#00FF00")
+plt.plot(potential_note_times_by_pitch,[-0.025]*len(potential_note_times_by_pitch), "X", color="#00F0F0")
+
+plt.plot(same_pitch_times,[0]*len(same_pitch_times), "X", color="#FF0000")
+plt.xlim(ST,ST+LIM)
+plt.savefig(f"note_db_analysis.pdf")
+# %%
+same_pitch_times
 # %%
 
-# TODO: use librosa.interp_harmonics to determine the start and end time of a note. 
-# https://librosa.org/doc/main/generated/librosa.interp_harmonics.html#librosa.interp_harmonics 
 # %%
